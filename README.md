@@ -6,58 +6,7 @@
 
 - Python 3.11+
 - PostgreSQL 15+
-- Docker (опционально)
-
-## Установка и запуск
-
-### Локальная разработка
-
-1. Создайте виртуальное окружение и активируйте его:
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate  # Windows
-```
-
-2. Установите зависимости:
-```bash
-pip install -r requirements.txt
-```
-
-3. Создайте файл `.env` на основе `.env.example` и настройте переменные окружения:
-```bash
-cp .env.example .env
-```
-
-4. Примените миграции базы данных:
-```bash
-alembic upgrade head
-```
-
-5. Запустите сервер:
-```bash
-uvicorn app.main:app --reload
-```
-
-### Запуск через Docker
-
-1. Создайте файл `.env` с настройками:
-```bash
-cp .env.example .env
-```
-
-2. Соберите и запустите контейнеры:
-```bash
-docker-compose up -d
-```
-
-## API Документация
-
-После запуска сервера документация доступна по адресам:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-## Основные эндпоинты
+- Docker
 
 ### Публичное API
 
