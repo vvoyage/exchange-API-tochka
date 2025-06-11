@@ -36,9 +36,9 @@ class CreateOrderResponse(BaseModel):
 
 class OrderBase(BaseModel):
     """Базовая схема ордера"""
-    id: str
+    id: UUID
     status: OrderStatus
-    user_id: str
+    user_id: UUID
     timestamp: datetime
     filled: int = 0
 

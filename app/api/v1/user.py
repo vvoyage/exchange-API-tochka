@@ -7,6 +7,7 @@ from app.schemas.order import (
     LimitOrderBody, MarketOrderBody, CreateOrderResponse,
     LimitOrder, MarketOrder
 )
+from app.schemas.balance import BalanceResponse
 from app.services import order_service, balance_service
 import logging
 

@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from typing import Dict
+from uuid import UUID
 from app.models.balance import Balance
 from app.services import user_service, instrument_service
-from typing import Dict
 import logging
 
 async def get_user_balances(db: Session, user_id: str) -> Dict[str, int]:
@@ -13,10 +14,19 @@ async def get_user_balances(db: Session, user_id: str) -> Dict[str, int]:
     balances = db.query(Balance).filter(Balance.user_id == user_id).all()
     return {balance.ticker: balance.amount for balance in balances}
 
+async def check_balance(db: Session, user_id: str, ticker: str, amount: int) -> bool:
+    """Проверка достаточности средств"""
+    balance = db.query(Balance).filter(
+        Balance.user_id == user_id,
+        Balance.ticker == ticker
+    ).first()
+    
+    return balance is not None and balance.amount >= amount
+
 async def deposit(db: Session, user_id: str, ticker: str, amount: int):
     """Пополнение баланса"""
     logger = logging.getLogger(__name__)
-    logger.debug(f"Depositing {amount} {ticker} for user {user_id}")
+    logger.info(f"Depositing {amount} {ticker} for user {user_id}")
 
     if amount <= 0:
         logger.error(f"Invalid deposit amount: {amount}")
@@ -32,17 +42,18 @@ async def deposit(db: Session, user_id: str, ticker: str, amount: int):
     ).first()
     
     if balance:
-        logger.debug(f"Updating existing balance: {balance.amount} + {amount} = {balance.amount + amount} {ticker}")
+        logger.info(f"Current balance: {balance.amount} {ticker}")
         balance.amount += amount
+        logger.info(f"New balance after deposit: {balance.amount} {ticker}")
     else:
-        logger.debug(f"Creating new balance: {amount} {ticker}")
+        logger.info(f"Creating new balance record with {amount} {ticker}")
         balance = Balance(user_id=user_id, ticker=ticker, amount=amount)
         db.add(balance)
     
     try:
         db.commit()
         db.refresh(balance)
-        logger.debug(f"Successfully deposited {amount} {ticker}. New balance: {balance.amount}")
+        logger.info(f"Successfully deposited {amount} {ticker}. New balance: {balance.amount}")
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to deposit: {str(e)}")
@@ -76,13 +87,4 @@ async def withdraw(db: Session, user_id: str, ticker: str, amount: int):
         db.rollback()
         raise HTTPException(status_code=400, detail="Ошибка при списании с баланса")
     
-    return {"success": True}
-
-async def check_balance(db: Session, user_id: str, ticker: str, amount: int) -> bool:
-    """Проверка достаточности средств"""
-    balance = db.query(Balance).filter(
-        Balance.user_id == user_id,
-        Balance.ticker == ticker
-    ).first()
-    
-    return balance is not None and balance.amount >= amount 
+    return {"success": True} 
