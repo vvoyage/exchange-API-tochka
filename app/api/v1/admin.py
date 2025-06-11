@@ -4,6 +4,7 @@ from app.models.base import get_db
 from app.core.security import verify_admin_key
 from app.schemas.user import User
 from app.schemas.instrument import Instrument
+from app.schemas.balance import Body_deposit_api_v1_admin_balance_deposit_post, Body_withdraw_api_v1_admin_balance_withdraw_post
 from app.services import user_service, instrument_service, balance_service
 import logging
 
@@ -47,28 +48,28 @@ async def delete_instrument(
 
 @router.post("/balance/deposit")
 async def deposit(
-    deposit_data: dict,
+    deposit_data: Body_deposit_api_v1_admin_balance_deposit_post,
     _: bool = Depends(verify_admin_key),
     db: Session = Depends(get_db)
 ):
     """Пополнение баланса пользователя"""
     return await balance_service.deposit(
         db,
-        user_id=deposit_data["user_id"],
-        ticker=deposit_data["ticker"],
-        amount=deposit_data["amount"]
+        user_id=str(deposit_data.user_id),
+        ticker=deposit_data.ticker,
+        amount=deposit_data.amount
     )
 
 @router.post("/balance/withdraw")
 async def withdraw(
-    withdraw_data: dict,
+    withdraw_data: Body_withdraw_api_v1_admin_balance_withdraw_post,
     _: bool = Depends(verify_admin_key),
     db: Session = Depends(get_db)
 ):
     """Списание с баланса пользователя"""
     return await balance_service.withdraw(
         db,
-        user_id=withdraw_data["user_id"],
-        ticker=withdraw_data["ticker"],
-        amount=withdraw_data["amount"]
+        user_id=str(withdraw_data.user_id),
+        ticker=withdraw_data.ticker,
+        amount=withdraw_data.amount
     ) 

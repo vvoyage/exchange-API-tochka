@@ -20,13 +20,23 @@ async def create_order(
     # Проверяем существование инструмента
     await instrument_service.get_instrument(db, order_data.ticker)
     
-    # Проверяем баланс для SELL ордеров
+    # Проверяем баланс
     if order_data.direction == Direction.SELL:
+        # Для продажи проверяем баланс продаваемого инструмента
         has_balance = await balance_service.check_balance(
             db, user_id, order_data.ticker, order_data.qty
         )
         if not has_balance:
             raise HTTPException(status_code=400, detail="Недостаточно средств")
+    else:
+        # Для покупки проверяем баланс RUB
+        if isinstance(order_data, LimitOrderBody):
+            required_amount = order_data.qty * order_data.price
+            has_balance = await balance_service.check_balance(
+                db, user_id, "RUB", required_amount
+            )
+            if not has_balance:
+                raise HTTPException(status_code=400, detail="Недостаточно средств в RUB")
     
     # Создаем ордер
     order = Order(
