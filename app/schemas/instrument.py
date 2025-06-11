@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
 
 class Instrument(BaseModel):
-    """Схема торгового инструмента"""
+    """Схема инструмента"""
     name: str
-    ticker: str = Field(..., pattern=r"^[A-Z]{2,10}$")
+    ticker: str = Field(..., pattern="^[A-Z]{2,10}$")
 
     class Config:
         from_attributes = True

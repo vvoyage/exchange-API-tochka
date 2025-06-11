@@ -1,17 +1,61 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Optional
 from datetime import datetime
 from uuid import UUID
-from app.models.order import Order
+from app.models.order import Order as OrderModel
 from app.models.transaction import Transaction
 from app.schemas.order import (
-    LimitOrderBody, MarketOrderBody, OrderStatus,
-    Direction, CreateOrderResponse
+    LimitOrder, MarketOrder, OrderStatus,
+    Direction, CreateOrderResponse, LimitOrderBody, MarketOrderBody
 )
 from app.schemas.instrument import L2OrderBook, Level
 from app.services import balance_service, instrument_service
 import logging
+
+def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]:
+    """Конвертация модели Order в схему согласно OpenAPI"""
+    if order.price is not None:  # Лимитный ордер
+        body = LimitOrderBody(
+            direction=order.direction,
+            ticker=order.ticker,
+            qty=order.qty,
+            price=order.price
+        )
+        return LimitOrder(
+            id=order.id,
+            status=order.status,
+            user_id=order.user_id,
+            timestamp=order.timestamp,
+            filled=order.filled,
+            body=body
+        )
+    else:  # Рыночный ордер
+        body = MarketOrderBody(
+            direction=order.direction,
+            ticker=order.ticker,
+            qty=order.qty
+        )
+        return MarketOrder(
+            id=order.id,
+            status=order.status,
+            user_id=order.user_id,
+            timestamp=order.timestamp,
+            filled=order.filled,
+            body=body
+        )
+
+async def get_orders(db: Session, user_id: Optional[UUID] = None) -> List[Union[LimitOrder, MarketOrder]]:
+    """Получение списка ордеров"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Getting orders for user {user_id if user_id else 'all'}")
+    
+    query = db.query(OrderModel)
+    if user_id:
+        query = query.filter(OrderModel.user_id == user_id)
+    
+    orders = query.all()
+    return [convert_order_to_schema(order) for order in orders]
 
 async def create_order(
     db: Session,
@@ -48,7 +92,7 @@ async def create_order(
                 raise HTTPException(status_code=400, detail="Недостаточно средств в RUB")
     
     # Создаем ордер
-    order = Order(
+    order = OrderModel(
         user_id=user_id,
         ticker=order_data.ticker,
         direction=order_data.direction,
@@ -88,9 +132,9 @@ async def cancel_order(db: Session, order_id: UUID, user_id: UUID):
     
     return {"success": True}
 
-async def get_order(db: Session, order_id: UUID, user_id: UUID) -> Order:
+async def get_order(db: Session, order_id: UUID, user_id: UUID) -> OrderModel:
     """Получение ордера"""
-    order = db.query(Order).filter(Order.id == order_id).first()
+    order = db.query(OrderModel).filter(OrderModel.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ордер не найден")
     
@@ -99,11 +143,11 @@ async def get_order(db: Session, order_id: UUID, user_id: UUID) -> Order:
     
     return order
 
-async def get_user_orders(db: Session, user_id: UUID) -> List[Order]:
+async def get_user_orders(db: Session, user_id: UUID) -> List[OrderModel]:
     """Получение списка активных ордеров пользователя"""
-    return db.query(Order).filter(
-        Order.user_id == user_id,
-        Order.status == OrderStatus.NEW
+    return db.query(OrderModel).filter(
+        OrderModel.user_id == user_id,
+        OrderModel.status == OrderStatus.NEW
     ).all()
 
 async def get_orderbook(db: Session, ticker: str, limit: int = 10) -> L2OrderBook:
@@ -112,9 +156,9 @@ async def get_orderbook(db: Session, ticker: str, limit: int = 10) -> L2OrderBoo
     await instrument_service.get_instrument(db, ticker)
     
     # Получаем активные ордера
-    orders = db.query(Order).filter(
-        Order.ticker == ticker,
-        Order.status == OrderStatus.NEW
+    orders = db.query(OrderModel).filter(
+        OrderModel.ticker == ticker,
+        OrderModel.status == OrderStatus.NEW
     ).all()
     
     # Группируем ордера по цене
@@ -156,7 +200,7 @@ async def get_transaction_history(
         Transaction.ticker == ticker
     ).order_by(Transaction.timestamp.desc()).limit(limit).all()
 
-async def try_execute_order(db: Session, order: Order):
+async def try_execute_order(db: Session, order: OrderModel):
     """Попытка исполнения ордера"""
     if order.status != OrderStatus.NEW:
         return
@@ -164,24 +208,24 @@ async def try_execute_order(db: Session, order: Order):
     # Находим встречные ордера
     opposite_direction = Direction.SELL if order.direction == Direction.BUY else Direction.BUY
     
-    query = db.query(Order).filter(
-        Order.ticker == order.ticker,
-        Order.direction == opposite_direction,
-        Order.status == OrderStatus.NEW
+    query = db.query(OrderModel).filter(
+        OrderModel.ticker == order.ticker,
+        OrderModel.direction == opposite_direction,
+        OrderModel.status == OrderStatus.NEW
     )
     
     if order.price:  # Для лимитных ордеров
         if order.direction == Direction.BUY:
-            query = query.filter(Order.price <= order.price)
+            query = query.filter(OrderModel.price <= order.price)
         else:
-            query = query.filter(Order.price >= order.price)
+            query = query.filter(OrderModel.price >= order.price)
         
-        query = query.order_by(Order.price)
+        query = query.order_by(OrderModel.price)
     else:  # Для рыночных ордеров
         if order.direction == Direction.BUY:
-            query = query.order_by(Order.price)
+            query = query.order_by(OrderModel.price)
         else:
-            query = query.order_by(Order.price.desc())
+            query = query.order_by(OrderModel.price.desc())
     
     opposite_orders = query.all()
     

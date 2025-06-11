@@ -1,13 +1,9 @@
 from pydantic import BaseModel
 from datetime import datetime
-from uuid import UUID
 
 class Transaction(BaseModel):
-    """Схема транзакции"""
-    id: UUID
+    """Схема транзакции согласно OpenAPI"""
     ticker: str
-    buyer_id: UUID
-    seller_id: UUID
     amount: int
     price: int
     timestamp: datetime
