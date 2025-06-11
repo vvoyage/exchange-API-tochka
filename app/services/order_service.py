@@ -68,7 +68,7 @@ async def create_order(
     # Пытаемся исполнить ордер
     await try_execute_order(db, order)
     
-    return CreateOrderResponse(order_id=order.id)
+    return CreateOrderResponse(success=True, order_id=order.id)
 
 async def cancel_order(db: Session, order_id: str, user_id: str):
     """Отмена ордера"""

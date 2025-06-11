@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Union
 from app.models.base import get_db
 from app.core.security import verify_api_key
-from app.schemas.order import LimitOrderBody, MarketOrderBody, CreateOrderResponse, LimitOrder, MarketOrder
+from app.schemas.order import (
+    LimitOrderBody, MarketOrderBody, CreateOrderResponse,
+    LimitOrder, MarketOrder
+)
 from app.services import order_service, balance_service
 import logging
 
@@ -35,7 +38,7 @@ async def create_order(
         raise
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
-        raise
+        raise HTTPException(status_code=400, detail="Ошибка при создании ордера")
 
 @router.get("/order", response_model=List[Union[LimitOrder, MarketOrder]])
 async def list_orders(

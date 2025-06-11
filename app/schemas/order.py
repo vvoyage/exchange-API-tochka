@@ -2,6 +2,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 class Direction(str, Enum):
     """Направление ордера"""
@@ -31,7 +32,7 @@ class MarketOrderBody(BaseModel):
 class CreateOrderResponse(BaseModel):
     """Ответ на создание ордера"""
     success: bool = True
-    order_id: str
+    order_id: UUID
 
 class OrderBase(BaseModel):
     """Базовая схема ордера"""
