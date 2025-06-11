@@ -27,8 +27,8 @@ def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]
             status=order.status,
             user_id=order.user_id,
             timestamp=order.timestamp,
-            filled=order.filled,
-            body=body
+            body=body,
+            filled=order.filled or 0  # Убедимся, что filled всегда имеет значение
         )
     else:  # Рыночный ордер
         body = MarketOrderBody(
@@ -41,7 +41,6 @@ def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]
             status=order.status,
             user_id=order.user_id,
             timestamp=order.timestamp,
-            filled=order.filled,
             body=body
         )
 
@@ -132,23 +131,45 @@ async def cancel_order(db: Session, order_id: UUID, user_id: UUID):
     
     return {"success": True}
 
-async def get_order(db: Session, order_id: UUID, user_id: UUID) -> OrderModel:
+async def get_order(db: Session, order_id: UUID, user_id: UUID) -> Union[LimitOrder, MarketOrder]:
     """Получение ордера"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"[ORDER] Getting order: id={order_id}, user_id={user_id}")
+    
     order = db.query(OrderModel).filter(OrderModel.id == order_id).first()
     if not order:
+        logger.error(f"[ORDER] Order not found: id={order_id}")
         raise HTTPException(status_code=404, detail="Ордер не найден")
     
     if order.user_id != user_id:
+        logger.error(f"[ORDER] Access denied: order_user_id={order.user_id}, request_user_id={user_id}")
         raise HTTPException(status_code=403, detail="Нет доступа к ордеру")
     
-    return order
+    try:
+        result = convert_order_to_schema(order)
+        logger.info(f"[ORDER] Successfully converted order to schema: id={order_id}, type={'limit' if order.price is not None else 'market'}")
+        return result
+    except Exception as e:
+        logger.error(f"[ORDER] Failed to convert order to schema: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при обработке ордера")
 
-async def get_user_orders(db: Session, user_id: UUID) -> List[OrderModel]:
+async def get_user_orders(db: Session, user_id: UUID) -> List[Union[LimitOrder, MarketOrder]]:
     """Получение списка активных ордеров пользователя"""
-    return db.query(OrderModel).filter(
+    logger = logging.getLogger(__name__)
+    logger.info(f"[ORDER] Getting active orders for user: {user_id}")
+    
+    orders = db.query(OrderModel).filter(
         OrderModel.user_id == user_id,
         OrderModel.status == OrderStatus.NEW
     ).all()
+    
+    try:
+        result = [convert_order_to_schema(order) for order in orders]
+        logger.info(f"[ORDER] Found {len(result)} active orders for user {user_id}")
+        return result
+    except Exception as e:
+        logger.error(f"[ORDER] Failed to convert orders to schema: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при обработке ордеров")
 
 async def get_orderbook(db: Session, ticker: str, limit: int = 10) -> L2OrderBook:
     """Получение стакана заявок"""
