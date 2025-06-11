@@ -11,14 +11,39 @@ async def add_instrument(db: Session, instrument_data: InstrumentSchema):
     logger.debug(f"Adding instrument: name={instrument_data.name}, ticker={instrument_data.ticker}")
     
     try:
+        # Проверяем существование инструмента (активного или неактивного)
+        existing_instrument = db.query(Instrument).filter(
+            Instrument.ticker == instrument_data.ticker
+        ).first()
+        
+        if existing_instrument:
+            if existing_instrument.is_active:
+                logger.error(f"Instrument {instrument_data.ticker} already exists and is active")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Инструмент уже существует"
+                )
+            else:
+                # Реактивируем существующий инструмент
+                logger.info(f"Reactivating existing instrument {instrument_data.ticker}")
+                existing_instrument.is_active = True
+                existing_instrument.name = instrument_data.name  # Обновляем имя
+                db.commit()
+                db.refresh(existing_instrument)
+                return {"success": True}
+        
+        # Создаем новый инструмент если не существует
         instrument = Instrument(
             name=instrument_data.name,
-            ticker=instrument_data.ticker
+            ticker=instrument_data.ticker,
+            is_active=True
         )
         db.add(instrument)
         db.commit()
         db.refresh(instrument)
-        logger.debug(f"Successfully added instrument {instrument_data.ticker}")
+        logger.debug(f"Successfully added new instrument {instrument_data.ticker}")
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to add instrument: {str(e)}")
