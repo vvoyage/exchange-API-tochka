@@ -3,22 +3,25 @@ from fastapi import HTTPException
 from app.models.user import User
 from app.schemas.user import NewUser, UserRole
 from app.core.security import create_api_key
-from uuid import UUID
+from uuid import UUID, uuid4
 
 async def create_user(db: Session, user_data: NewUser) -> User:
     """Создание нового пользователя"""
-    # Создаем пользователя
+    # Создаём временный UUID для генерации временного api_key
+    temp_uuid = uuid4()
+    
+    # Создаём пользователя с временным api_key
     user = User(
         name=user_data.name,
         role=UserRole.USER,
-        api_key=create_api_key(user.id)  # api_key будет создан после получения id
+        api_key=create_api_key(temp_uuid)
     )
     
     db.add(user)
     try:
         db.commit()
         db.refresh(user)
-        # Обновляем api_key после получения id
+        # Обновляем api_key с реальным id пользователя
         user.api_key = create_api_key(user.id)
         db.commit()
     except Exception as e:
