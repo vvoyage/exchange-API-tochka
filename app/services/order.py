@@ -27,14 +27,22 @@ def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]
     """Конвертирует модель ордера в схему"""
     logger = logging.getLogger(__name__)
     
-    # Ensure timestamp is timezone-aware and in UTC
-    if order.timestamp.tzinfo is None:
-        logger.warning(f"Service: Timestamp without timezone detected for order {order.id}. Adding UTC timezone.")
-        timestamp = order.timestamp.replace(tzinfo=timezone.utc)
+    # Проверяем, что timestamp существует
+    if order.timestamp is None:
+        logger.error(f"Order {order.id} has no timestamp!")
+        # Используем текущее время как fallback
+        timestamp = datetime.now(timezone.utc)
     else:
-        timestamp = order.timestamp.astimezone(timezone.utc)
+        timestamp = order.timestamp
 
-    # Convert to ISO 8601 format with timezone info
+    # Убеждаемся, что timestamp имеет timezone
+    if timestamp.tzinfo is None:
+        logger.warning(f"Service: Timestamp without timezone detected for order {order.id}. Adding UTC timezone.")
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    else:
+        timestamp = timestamp.astimezone(timezone.utc)
+
+    # Конвертируем в строку ISO 8601
     timestamp_str = timestamp.isoformat()
     if not timestamp_str.endswith('Z') and '+' not in timestamp_str and '-' not in timestamp_str[10:]:
         timestamp_str += 'Z'
@@ -43,7 +51,7 @@ def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]
         "id": order.id,
         "status": order.status,
         "user_id": order.user_id,
-        "timestamp": timestamp_str,
+        "timestamp": timestamp_str,  # Теперь гарантированно строка с timezone
         "filled": order.filled or 0
     }
 

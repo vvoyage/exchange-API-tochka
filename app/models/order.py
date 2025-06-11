@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Enum as SQLEnum, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Enum as SQLEnum, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime, timezone
@@ -20,19 +20,21 @@ class Order(Base):
     qty = Column(Integer, nullable=False)
     price = Column(Integer, nullable=True)  # Null для рыночных ордеров
     filled = Column(Integer, nullable=False, default=0)
-    timestamp = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime(timezone=True), nullable=False, 
+                      default=datetime.now(timezone.utc),
+                      server_default=func.now())
 
     def __init__(self, **kwargs):
-        # Убедимся, что timestamp всегда имеет UTC timezone
-        if 'timestamp' in kwargs:
-            ts = kwargs['timestamp']
-            if isinstance(ts, datetime):
-                if ts.tzinfo is None:
-                    logger.warning(f"DB: Timestamp without timezone detected for order creation. Adding UTC timezone.")
-                    kwargs['timestamp'] = ts.replace(tzinfo=timezone.utc)
-                elif ts.tzinfo != timezone.utc:
-                    logger.info(f"DB: Converting timestamp to UTC for order creation")
-                    kwargs['timestamp'] = ts.astimezone(timezone.utc)
+        # Обработка timestamp
+        if 'timestamp' not in kwargs or kwargs['timestamp'] is None:
+            kwargs['timestamp'] = datetime.now(timezone.utc)
+        elif isinstance(kwargs['timestamp'], datetime):
+            if kwargs['timestamp'].tzinfo is None:
+                logger.warning(f"DB: Timestamp without timezone detected for order creation. Adding UTC timezone.")
+                kwargs['timestamp'] = kwargs['timestamp'].replace(tzinfo=timezone.utc)
+            elif kwargs['timestamp'].tzinfo != timezone.utc:
+                logger.info(f"DB: Converting timestamp to UTC for order creation")
+                kwargs['timestamp'] = kwargs['timestamp'].astimezone(timezone.utc)
         
         super().__init__(**kwargs)
         logger.info(f"Created order: id={self.id}, direction={self.direction}, "
