@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from typing import Dict
 from uuid import UUID
 from app.models.balance import Balance
+from app.models.instrument import Instrument
 from app.services import user_service, instrument_service
 import logging
 
@@ -23,6 +24,18 @@ async def check_balance(db: Session, user_id: UUID, ticker: str, amount: int) ->
     
     return balance is not None and balance.amount >= amount
 
+async def _get_instrument_for_balance(db: Session, ticker: str):
+    """Внутренняя функция для проверки существования инструмента при работе с балансом.
+    Проверяет только существование инструмента, игнорируя флаг is_active."""
+    instrument = db.query(Instrument).filter(
+        Instrument.ticker == ticker
+    ).first()
+    
+    if not instrument:
+        raise HTTPException(status_code=404, detail="Инструмент не найден")
+    
+    return instrument
+
 async def deposit(db: Session, user_id: UUID, ticker: str, amount: int):
     """Пополнение баланса"""
     logger = logging.getLogger(__name__)
@@ -36,7 +49,8 @@ async def deposit(db: Session, user_id: UUID, ticker: str, amount: int):
     try:
         user = await user_service.get_user(db, user_id)
         logger.info(f"User {user_id} found: {user.name}")
-        instrument = await instrument_service.get_instrument(db, ticker)
+        # Используем специальную функцию проверки инструмента для баланса
+        instrument = await _get_instrument_for_balance(db, ticker)
         logger.info(f"Instrument {ticker} found")
     except HTTPException as e:
         logger.error(f"Failed to find user or instrument: {e.detail}")
@@ -76,7 +90,7 @@ async def withdraw(db: Session, user_id: UUID, ticker: str, amount: int):
     
     # Проверяем существование пользователя и инструмента
     await user_service.get_user(db, user_id)
-    await instrument_service.get_instrument(db, ticker)
+    await _get_instrument_for_balance(db, ticker)
     
     balance = db.query(Balance).filter(
         Balance.user_id == user_id,
