@@ -26,34 +26,42 @@ async def check_balance(db: Session, user_id: UUID, ticker: str, amount: int) ->
 async def deposit(db: Session, user_id: UUID, ticker: str, amount: int):
     """Пополнение баланса"""
     logger = logging.getLogger(__name__)
-    logger.info(f"Depositing {amount} {ticker} for user {user_id}")
+    logger.info(f"Starting deposit of {amount} {ticker} for user {user_id}")
 
     if amount <= 0:
         logger.error(f"Invalid deposit amount: {amount}")
         raise HTTPException(status_code=400, detail="Сумма должна быть положительной")
     
     # Проверяем существование пользователя и инструмента
-    await user_service.get_user(db, user_id)
-    await instrument_service.get_instrument(db, ticker)
-    
+    try:
+        user = await user_service.get_user(db, user_id)
+        logger.info(f"User {user_id} found: {user.name}")
+        instrument = await instrument_service.get_instrument(db, ticker)
+        logger.info(f"Instrument {ticker} found")
+    except HTTPException as e:
+        logger.error(f"Failed to find user or instrument: {e.detail}")
+        raise
+
+    # Проверяем текущий баланс
     balance = db.query(Balance).filter(
         Balance.user_id == user_id,
         Balance.ticker == ticker
     ).first()
     
     if balance:
-        logger.info(f"Current balance: {balance.amount} {ticker}")
+        logger.info(f"Current balance found: {balance.amount} {ticker}")
         balance.amount += amount
         logger.info(f"New balance after deposit: {balance.amount} {ticker}")
     else:
-        logger.info(f"Creating new balance record with {amount} {ticker}")
+        logger.info(f"No existing balance found, creating new balance record with {amount} {ticker}")
         balance = Balance(user_id=user_id, ticker=ticker, amount=amount)
         db.add(balance)
     
     try:
+        logger.info("Committing transaction...")
         db.commit()
         db.refresh(balance)
-        logger.info(f"Successfully deposited {amount} {ticker}. New balance: {balance.amount}")
+        logger.info(f"Successfully deposited {amount} {ticker}. Final balance: {balance.amount}")
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to deposit: {str(e)}")
