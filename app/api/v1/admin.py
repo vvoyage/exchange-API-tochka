@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from uuid import UUID
 from app.models.base import get_db
 from app.core.security import verify_admin_key
 from app.schemas.user import User
@@ -12,7 +13,7 @@ router = APIRouter()
 
 @router.delete("/user/{user_id}", response_model=User)
 async def delete_user(
-    user_id: str,
+    user_id: UUID,
     _: bool = Depends(verify_admin_key),
     db: Session = Depends(get_db)
 ):
@@ -55,7 +56,7 @@ async def deposit(
     """Пополнение баланса пользователя"""
     return await balance_service.deposit(
         db,
-        user_id=str(deposit_data.user_id),
+        user_id=deposit_data.user_id,
         ticker=deposit_data.ticker,
         amount=deposit_data.amount
     )
@@ -69,7 +70,7 @@ async def withdraw(
     """Списание с баланса пользователя"""
     return await balance_service.withdraw(
         db,
-        user_id=str(withdraw_data.user_id),
+        user_id=withdraw_data.user_id,
         ticker=withdraw_data.ticker,
         amount=withdraw_data.amount
     ) 

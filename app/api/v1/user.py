@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict, Union
+from uuid import UUID
 from app.models.base import get_db
 from app.core.security import verify_api_key
 from app.schemas.order import (
@@ -15,7 +16,7 @@ router = APIRouter()
 
 @router.get("/balance", response_model=Dict[str, int])
 async def get_balances(
-    user_id: str = Depends(verify_api_key),
+    user_id: UUID = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
     """Получение балансов пользователя"""
@@ -24,7 +25,7 @@ async def get_balances(
 @router.post("/order", response_model=CreateOrderResponse)
 async def create_order(
     order: Union[LimitOrderBody, MarketOrderBody],
-    user_id: str = Depends(verify_api_key),
+    user_id: UUID = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
     """Создание ордера"""
@@ -43,7 +44,7 @@ async def create_order(
 
 @router.get("/order", response_model=List[Union[LimitOrder, MarketOrder]])
 async def list_orders(
-    user_id: str = Depends(verify_api_key),
+    user_id: UUID = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
     """Получение списка активных ордеров пользователя"""
@@ -51,8 +52,8 @@ async def list_orders(
 
 @router.get("/order/{order_id}", response_model=Union[LimitOrder, MarketOrder])
 async def get_order(
-    order_id: str,
-    user_id: str = Depends(verify_api_key),
+    order_id: UUID,
+    user_id: UUID = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
     """Получение информации об ордере"""
@@ -60,8 +61,8 @@ async def get_order(
 
 @router.delete("/order/{order_id}")
 async def cancel_order(
-    order_id: str,
-    user_id: str = Depends(verify_api_key),
+    order_id: UUID,
+    user_id: UUID = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
     """Отмена ордера"""

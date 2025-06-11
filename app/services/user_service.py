@@ -11,13 +11,16 @@ async def create_user(db: Session, user_data: NewUser) -> User:
     user = User(
         name=user_data.name,
         role=UserRole.USER,
-        api_key=create_api_key(str(user_data.name))
+        api_key=create_api_key(user.id)  # api_key будет создан после получения id
     )
     
     db.add(user)
     try:
         db.commit()
         db.refresh(user)
+        # Обновляем api_key после получения id
+        user.api_key = create_api_key(user.id)
+        db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail="Ошибка при создании пользователя")

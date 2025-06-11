@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import UUID
 from jose import JWTError, jwt
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
@@ -8,11 +9,11 @@ from app.core.config import settings
 # Настройка заголовка авторизации
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
-def create_api_key(user_id: str) -> str:
+def create_api_key(user_id: UUID) -> str:
     """Создание API ключа для пользователя"""
-    return f"key-{user_id}"
+    return f"key-{str(user_id)}"
 
-def verify_api_key(api_key: str = Security(api_key_header)) -> str:
+def verify_api_key(api_key: str = Security(api_key_header)) -> UUID:
     """Проверка API ключа"""
     if not api_key:
         raise HTTPException(status_code=401, detail="API ключ не предоставлен")
@@ -27,7 +28,11 @@ def verify_api_key(api_key: str = Security(api_key_header)) -> str:
     if not api_key.startswith("key-"):
         raise HTTPException(status_code=401, detail="Неверный формат API ключа")
     
-    return api_key.replace("key-", "")
+    user_id_str = api_key.replace("key-", "")
+    try:
+        return UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Неверный формат UUID в API ключе")
 
 def verify_admin_key(api_key: str = Security(api_key_header)) -> bool:
     """Проверка административного API ключа"""
@@ -40,4 +45,6 @@ def verify_admin_key(api_key: str = Security(api_key_header)) -> bool:
     api_key = api_key.replace("TOKEN ", "")
     
     if api_key != settings.ADMIN_API_KEY:
-        raise HTTPException(status_code=403, detail="Недостаточно прав") 
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    
+    return True 

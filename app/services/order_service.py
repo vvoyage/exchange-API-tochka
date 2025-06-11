@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from typing import List, Union, Dict
 from datetime import datetime
+from uuid import UUID
 from app.models.order import Order
 from app.models.transaction import Transaction
 from app.schemas.order import (
@@ -14,7 +15,7 @@ import logging
 
 async def create_order(
     db: Session,
-    user_id: str,
+    user_id: UUID,
     order_data: Union[LimitOrderBody, MarketOrderBody]
 ) -> CreateOrderResponse:
     """Создание ордера"""
@@ -70,7 +71,7 @@ async def create_order(
     
     return CreateOrderResponse(success=True, order_id=order.id)
 
-async def cancel_order(db: Session, order_id: str, user_id: str):
+async def cancel_order(db: Session, order_id: UUID, user_id: UUID):
     """Отмена ордера"""
     order = await get_order(db, order_id, user_id)
     
@@ -87,7 +88,7 @@ async def cancel_order(db: Session, order_id: str, user_id: str):
     
     return {"success": True}
 
-async def get_order(db: Session, order_id: str, user_id: str) -> Order:
+async def get_order(db: Session, order_id: UUID, user_id: UUID) -> Order:
     """Получение ордера"""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -98,7 +99,7 @@ async def get_order(db: Session, order_id: str, user_id: str) -> Order:
     
     return order
 
-async def get_user_orders(db: Session, user_id: str) -> List[Order]:
+async def get_user_orders(db: Session, user_id: UUID) -> List[Order]:
     """Получение списка активных ордеров пользователя"""
     return db.query(Order).filter(
         Order.user_id == user_id,
