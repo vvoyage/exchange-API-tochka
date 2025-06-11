@@ -18,25 +18,27 @@ class Order(Base):
     direction = Column(SQLEnum(Direction), nullable=False)
     status = Column(SQLEnum(OrderStatus), nullable=False, default=OrderStatus.NEW)
     qty = Column(Integer, nullable=False)
-    price = Column(Integer, nullable=True)  # Null для рыночных ордеров
+    price = Column(Integer, nullable=True)  # null для market ордеров
     filled = Column(Integer, nullable=False, default=0)
-    timestamp = Column(DateTime(timezone=True), nullable=False, 
-                      default=datetime.now(timezone.utc),
-                      server_default=func.now())
+    timestamp = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     def __init__(self, **kwargs):
-        # Обработка timestamp
-        if 'timestamp' not in kwargs or kwargs['timestamp'] is None:
+        if 'timestamp' in kwargs:
+            ts = kwargs['timestamp']
+            if isinstance(ts, datetime):
+                if ts.tzinfo is None:
+                    logger.warning(f"DB: Timestamp without timezone detected for order creation. Adding UTC timezone.")
+                    kwargs['timestamp'] = ts.replace(tzinfo=timezone.utc)
+                elif ts.tzinfo != timezone.utc:
+                    logger.info(f"DB: Converting timestamp to UTC for order creation")
+                    kwargs['timestamp'] = ts.astimezone(timezone.utc)
+        else:
             kwargs['timestamp'] = datetime.now(timezone.utc)
-        elif isinstance(kwargs['timestamp'], datetime):
-            if kwargs['timestamp'].tzinfo is None:
-                logger.warning(f"DB: Timestamp without timezone detected for order creation. Adding UTC timezone.")
-                kwargs['timestamp'] = kwargs['timestamp'].replace(tzinfo=timezone.utc)
-            elif kwargs['timestamp'].tzinfo != timezone.utc:
-                logger.info(f"DB: Converting timestamp to UTC for order creation")
-                kwargs['timestamp'] = kwargs['timestamp'].astimezone(timezone.utc)
         
         super().__init__(**kwargs)
         logger.info(f"Created order: id={self.id}, direction={self.direction}, "
                    f"ticker={self.ticker}, qty={self.qty}, price={self.price}, "
-                   f"timestamp={self.timestamp}") 
+                   f"timestamp={self.timestamp}")
+
+    def __str__(self):
+        return f"Order(id={self.id}, direction={self.direction}, ticker={self.ticker}, qty={self.qty}, price={self.price}, timestamp={self.timestamp})" 

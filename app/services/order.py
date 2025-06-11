@@ -42,37 +42,37 @@ def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]
     else:
         timestamp = timestamp.astimezone(timezone.utc)
 
-    # Конвертируем в строку ISO 8601
+    # Конвертируем в ISO 8601 строку с timezone
     timestamp_str = timestamp.isoformat()
+    
+    # Убеждаемся, что timezone указан явно
     if not timestamp_str.endswith('Z') and '+' not in timestamp_str and '-' not in timestamp_str[10:]:
         timestamp_str += 'Z'
 
+    # Создаем базовые поля, общие для обоих типов ордеров
     base_fields = {
         "id": order.id,
         "status": order.status,
         "user_id": order.user_id,
-        "timestamp": timestamp_str,  # Теперь гарантированно строка с timezone
+        "timestamp": timestamp_str,
         "filled": order.filled or 0
     }
 
-    if order.price is not None:  # Limit order
-        return LimitOrder(
-            **base_fields,
-            body=LimitOrderBody(
-                direction=order.direction,
-                ticker=order.ticker,
-                qty=order.qty,
-                price=order.price,
-            ),
+    # Создаем тело ордера в зависимости от типа
+    if order.price is not None:  # Это LimitOrder
+        body = LimitOrderBody(
+            direction=order.direction,
+            ticker=order.ticker,
+            qty=order.qty,
+            price=order.price
         )
-    else:  # Market order
-        return MarketOrder(
-            **base_fields,
-            body=MarketOrderBody(
-                direction=order.direction,
-                ticker=order.ticker,
-                qty=order.qty,
-            ),
+        return LimitOrder(**base_fields, body=body)
+    else:  # Это MarketOrder
+        body = MarketOrderBody(
+            direction=order.direction,
+            ticker=order.ticker,
+            qty=order.qty
         )
+        return MarketOrder(**base_fields, body=body)
 
 # ... остальной код без изменений ... 
