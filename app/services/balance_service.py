@@ -6,7 +6,7 @@ from app.models.balance import Balance
 from app.services import user_service, instrument_service
 import logging
 
-async def get_user_balances(db: Session, user_id: str) -> Dict[str, int]:
+async def get_user_balances(db: Session, user_id: UUID) -> Dict[str, int]:
     """Получение балансов пользователя"""
     # Проверяем существование пользователя
     await user_service.get_user(db, user_id)
@@ -14,7 +14,7 @@ async def get_user_balances(db: Session, user_id: str) -> Dict[str, int]:
     balances = db.query(Balance).filter(Balance.user_id == user_id).all()
     return {balance.ticker: balance.amount for balance in balances}
 
-async def check_balance(db: Session, user_id: str, ticker: str, amount: int) -> bool:
+async def check_balance(db: Session, user_id: UUID, ticker: str, amount: int) -> bool:
     """Проверка достаточности средств"""
     balance = db.query(Balance).filter(
         Balance.user_id == user_id,
@@ -23,7 +23,7 @@ async def check_balance(db: Session, user_id: str, ticker: str, amount: int) -> 
     
     return balance is not None and balance.amount >= amount
 
-async def deposit(db: Session, user_id: str, ticker: str, amount: int):
+async def deposit(db: Session, user_id: UUID, ticker: str, amount: int):
     """Пополнение баланса"""
     logger = logging.getLogger(__name__)
     logger.info(f"Depositing {amount} {ticker} for user {user_id}")
@@ -61,7 +61,7 @@ async def deposit(db: Session, user_id: str, ticker: str, amount: int):
     
     return {"success": True}
 
-async def withdraw(db: Session, user_id: str, ticker: str, amount: int):
+async def withdraw(db: Session, user_id: UUID, ticker: str, amount: int):
     """Списание с баланса"""
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма должна быть положительной")

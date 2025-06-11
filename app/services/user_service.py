@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from app.models.user import User
 from app.schemas.user import NewUser, UserRole
 from app.core.security import create_api_key
+from uuid import UUID
 
 async def create_user(db: Session, user_data: NewUser) -> User:
     """Создание нового пользователя"""
@@ -23,7 +24,7 @@ async def create_user(db: Session, user_data: NewUser) -> User:
     
     return user
 
-async def delete_user(db: Session, user_id: str) -> User:
+async def delete_user(db: Session, user_id: UUID) -> User:
     """Удаление пользователя"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -38,7 +39,7 @@ async def delete_user(db: Session, user_id: str) -> User:
     
     return user
 
-async def get_user(db: Session, user_id: str) -> User:
+async def get_user(db: Session, user_id: UUID) -> User:
     """Получение пользователя по ID"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
