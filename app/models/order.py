@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, Enum as SQLEnum, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.schemas.order import OrderStatus, Direction
 from app.models.base import Base
 
@@ -17,4 +17,4 @@ class Order(Base):
     qty = Column(Integer, nullable=False)
     price = Column(Integer, nullable=True)  # Null для рыночных ордеров
     filled = Column(Integer, nullable=False, default=0)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow) 
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)) 
