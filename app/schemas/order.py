@@ -1,8 +1,11 @@
 from enum import Enum
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Direction(str, Enum):
     """Направление ордера"""
@@ -39,19 +42,16 @@ class OrderBase(BaseModel):
     id: UUID
     status: OrderStatus
     user_id: UUID
-    timestamp: datetime
+    timestamp: str = Field(..., pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(([+-]\d{2}:\d{2})|Z)$')
     filled: int = 0
+
+    class Config:
+        from_attributes = True
 
 class LimitOrder(OrderBase):
     """Схема лимитного ордера"""
     body: LimitOrderBody
 
-    class Config:
-        from_attributes = True
-
 class MarketOrder(OrderBase):
     """Схема рыночного ордера"""
-    body: MarketOrderBody
-
-    class Config:
-        from_attributes = True 
+    body: MarketOrderBody 
