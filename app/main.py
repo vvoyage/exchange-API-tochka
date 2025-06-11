@@ -1,8 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 
 from app.api.v1 import public, user, admin
 from app.core.config import settings
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO
+)
 
 app = FastAPI(
     title="Toy Exchange",
