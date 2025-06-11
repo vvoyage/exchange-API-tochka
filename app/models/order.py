@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Integer, Enum as SQLEnum, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
 from app.schemas.order import OrderStatus, Direction
@@ -8,8 +9,8 @@ class Order(Base):
     """Модель ордера"""
     __tablename__ = "orders"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     ticker = Column(String, ForeignKey("instruments.ticker"), nullable=False)
     direction = Column(SQLEnum(Direction), nullable=False)
     status = Column(SQLEnum(OrderStatus), nullable=False, default=OrderStatus.NEW)

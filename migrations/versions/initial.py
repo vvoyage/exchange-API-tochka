@@ -7,6 +7,7 @@ Create Date: 2024-02-09 00:00:00.000000
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from app.schemas.user import UserRole
 from app.schemas.order import OrderStatus, Direction
 
@@ -28,7 +29,7 @@ def upgrade() -> None:
         # Создаем таблицу пользователей
         op.create_table(
             'users',
-            sa.Column('id', sa.UUID(), nullable=False),
+            sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
             sa.Column('name', sa.String(), nullable=False),
             sa.Column('role', sa.Enum(UserRole, name='user_role'), nullable=False),
             sa.Column('api_key', sa.String(), nullable=False),
@@ -50,7 +51,7 @@ def upgrade() -> None:
         # Создаем таблицу балансов
         op.create_table(
             'balances',
-            sa.Column('user_id', sa.UUID(), nullable=False),
+            sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
             sa.Column('ticker', sa.String(), nullable=False),
             sa.Column('amount', sa.Integer(), nullable=False),
             sa.ForeignKeyConstraint(
@@ -70,8 +71,8 @@ def upgrade() -> None:
         # Создаем таблицу ордеров
         op.create_table(
             'orders',
-            sa.Column('id', sa.UUID(), nullable=False),
-            sa.Column('user_id', sa.UUID(), nullable=False),
+            sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
             sa.Column('ticker', sa.String(), nullable=False),
             sa.Column('direction', sa.Enum(Direction, name='direction'), nullable=False),
             sa.Column('status', sa.Enum(OrderStatus, name='order_status'), nullable=False),
@@ -98,10 +99,10 @@ def upgrade() -> None:
         # Создаем таблицу транзакций
         op.create_table(
             'transactions',
-            sa.Column('id', sa.UUID(), nullable=False),
+            sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
             sa.Column('ticker', sa.String(), nullable=False),
-            sa.Column('buyer_id', sa.UUID(), nullable=False),
-            sa.Column('seller_id', sa.UUID(), nullable=False),
+            sa.Column('buyer_id', postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column('seller_id', postgresql.UUID(as_uuid=True), nullable=False),
             sa.Column('amount', sa.Integer(), nullable=False),
             sa.Column('price', sa.Integer(), nullable=False),
             sa.Column('timestamp', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
