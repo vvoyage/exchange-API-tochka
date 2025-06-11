@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 from uuid import UUID
 from typing import Dict
 
-class BalanceResponse(BaseModel):
+class BalanceResponse(RootModel):
     """Схема ответа на запрос баланса"""
-    __root__: Dict[str, int]
+    root: Dict[str, int]
 
     class Config:
         json_schema_extra = {
