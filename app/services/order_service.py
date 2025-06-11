@@ -10,6 +10,7 @@ from app.schemas.order import (
 )
 from app.schemas.instrument import L2OrderBook, Level
 from app.services import balance_service, instrument_service
+import logging
 
 async def create_order(
     db: Session,
@@ -17,25 +18,32 @@ async def create_order(
     order_data: Union[LimitOrderBody, MarketOrderBody]
 ) -> CreateOrderResponse:
     """Создание ордера"""
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Creating order: direction={order_data.direction}, ticker={order_data.ticker}, qty={order_data.qty}")
+    
     # Проверяем существование инструмента
     await instrument_service.get_instrument(db, order_data.ticker)
     
     # Проверяем баланс
     if order_data.direction == Direction.SELL:
         # Для продажи проверяем баланс продаваемого инструмента
+        logger.debug(f"Checking balance for SELL order: {order_data.qty} {order_data.ticker}")
         has_balance = await balance_service.check_balance(
             db, user_id, order_data.ticker, order_data.qty
         )
         if not has_balance:
+            logger.error(f"Insufficient {order_data.ticker} balance for SELL order")
             raise HTTPException(status_code=400, detail="Недостаточно средств")
     else:
         # Для покупки проверяем баланс RUB
         if isinstance(order_data, LimitOrderBody):
             required_amount = order_data.qty * order_data.price
+            logger.debug(f"Checking RUB balance for BUY order: {required_amount} RUB (qty={order_data.qty}, price={order_data.price})")
             has_balance = await balance_service.check_balance(
                 db, user_id, "RUB", required_amount
             )
             if not has_balance:
+                logger.error(f"Insufficient RUB balance for BUY order. Required: {required_amount}")
                 raise HTTPException(status_code=400, detail="Недостаточно средств в RUB")
     
     # Создаем ордер
@@ -51,8 +59,10 @@ async def create_order(
     try:
         db.commit()
         db.refresh(order)
+        logger.debug(f"Successfully created order {order.id}")
     except Exception as e:
         db.rollback()
+        logger.error(f"Failed to create order: {str(e)}")
         raise HTTPException(status_code=400, detail="Ошибка при создании ордера")
     
     # Пытаемся исполнить ордер

@@ -3,21 +3,29 @@ from fastapi import HTTPException
 from app.models.instrument import Instrument
 from app.schemas.instrument import Instrument as InstrumentSchema
 from typing import List
+import logging
 
 async def add_instrument(db: Session, instrument_data: InstrumentSchema):
     """Добавление нового инструмента"""
-    instrument = Instrument(
-        name=instrument_data.name,
-        ticker=instrument_data.ticker
-    )
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Adding instrument: name={instrument_data.name}, ticker={instrument_data.ticker}")
     
-    db.add(instrument)
     try:
+        instrument = Instrument(
+            name=instrument_data.name,
+            ticker=instrument_data.ticker
+        )
+        db.add(instrument)
         db.commit()
         db.refresh(instrument)
+        logger.debug(f"Successfully added instrument {instrument_data.ticker}")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Ошибка при добавлении инструмента")
+        logger.error(f"Failed to add instrument: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ошибка при добавлении инструмента: {str(e)}"
+        )
     
     return {"success": True}
 
