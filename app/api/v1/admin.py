@@ -5,6 +5,7 @@ from app.core.security import verify_admin_key
 from app.schemas.user import User
 from app.schemas.instrument import Instrument
 from app.services import user_service, instrument_service, balance_service
+import logging
 
 router = APIRouter()
 
@@ -24,7 +25,16 @@ async def add_instrument(
     db: Session = Depends(get_db)
 ):
     """Добавление нового инструмента"""
-    return await instrument_service.add_instrument(db, instrument)
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Adding instrument: {instrument}")
+    try:
+        return await instrument_service.add_instrument(db, instrument)
+    except HTTPException as e:
+        logger.error(f"Failed to add instrument: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise
 
 @router.delete("/instrument/{ticker}")
 async def delete_instrument(

@@ -5,6 +5,7 @@ from app.models.base import get_db
 from app.core.security import verify_api_key
 from app.schemas.order import LimitOrderBody, MarketOrderBody, CreateOrderResponse, LimitOrder, MarketOrder
 from app.services import order_service, balance_service
+import logging
 
 router = APIRouter()
 
@@ -23,7 +24,18 @@ async def create_order(
     db: Session = Depends(get_db)
 ):
     """Создание ордера"""
-    return await order_service.create_order(db, user_id, order)
+    logger = logging.getLogger(__name__)
+    
+    logger.debug(f"Creating order. User ID: {user_id}")
+    logger.debug(f"Order data: {order}")
+    try:
+        return await order_service.create_order(db, user_id, order)
+    except HTTPException as e:
+        logger.error(f"Failed to create order: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise
 
 @router.get("/order", response_model=List[Union[LimitOrder, MarketOrder]])
 async def list_orders(
