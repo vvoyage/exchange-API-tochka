@@ -4,6 +4,7 @@ from typing import Dict
 from uuid import UUID
 from app.models.balance import Balance
 from app.models.instrument import Instrument
+from app.models.transaction import Transaction
 from app.services import user_service, instrument_service
 import logging
 
@@ -120,4 +121,31 @@ async def withdraw(db: Session, user_id: UUID, ticker: str, amount: int):
         logger.error(f"[WITHDRAW] Failed to withdraw: {str(e)}")
         raise HTTPException(status_code=400, detail="Ошибка при списании с баланса")
     
-    return {"success": True} 
+    return {"success": True}
+
+async def verify_balance_consistency(db: Session, user_id: UUID, ticker: str) -> bool:
+    """Проверка согласованности баланса с историей транзакций"""
+    logger = logging.getLogger(__name__)
+    
+    # Получаем текущий баланс
+    current_balance = await get_user_balances(db, user_id)
+    balance_amount = current_balance.get(ticker, 0)
+    
+    # Получаем все транзакции пользователя для данного тикера
+    transactions = db.query(Transaction).filter(
+        (Transaction.ticker == ticker) &
+        ((Transaction.buyer_id == user_id) | (Transaction.seller_id == user_id))
+    ).order_by(Transaction.timestamp.asc()).all()
+    
+    # Рассчитываем ожидаемый баланс на основе транзакций
+    expected_balance = 0
+    for tx in transactions:
+        if tx.buyer_id == user_id:
+            expected_balance += tx.amount
+        if tx.seller_id == user_id:
+            expected_balance -= tx.amount
+            
+    logger.info(f"[BALANCE_CHECK] User={user_id}, Ticker={ticker}, "
+                f"Current={balance_amount}, Expected={expected_balance}")
+    
+    return balance_amount == expected_balance 
