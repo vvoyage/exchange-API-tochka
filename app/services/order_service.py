@@ -289,20 +289,6 @@ async def try_execute_order(db: Session, order: OrderModel):
             remaining_qty -= execute_qty
             
             db.add(transaction)
-
-            # После выполнения транзакции проверяем согласованность балансов
-            buyer_balance_ok = await balance_service.verify_balance_consistency(
-                db, transaction.buyer_id, order.ticker)
-            seller_balance_ok = await balance_service.verify_balance_consistency(
-                db, transaction.seller_id, order.ticker)
-            
-            if not (buyer_balance_ok and seller_balance_ok):
-                logger.error(f"[TRANSACTION] Balance inconsistency detected: "
-                            f"buyer_ok={buyer_balance_ok}, seller_ok={seller_balance_ok}")
-                db.rollback()
-                raise HTTPException(status_code=400, 
-                                  detail="Обнаружено несоответствие балансов")
-            
             db.commit()
             logger.info(f"[TRANSACTION] Successfully executed transaction: id={transaction.id}")
             
