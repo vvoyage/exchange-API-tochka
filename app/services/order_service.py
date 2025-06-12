@@ -192,36 +192,33 @@ async def get_transaction_history(
     ).order_by(Transaction.timestamp.desc()).limit(limit).all()
 
 async def try_execute_order(db: Session, order: OrderModel):
-    """Попытка исполнения ордера"""
-    if order.status != OrderStatus.NEW:
-        return
-    
-    # Находим встречные ордера
+    """Попытка исполнить ордер"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"[ORDER] Trying to execute order: id={order.id}, direction={order.direction}, ticker={order.ticker}, qty={order.qty}, price={order.price}")
+
+    # Определяем направление для поиска встречных ордеров
     opposite_direction = Direction.SELL if order.direction == Direction.BUY else Direction.BUY
     
-    query = db.query(OrderModel).filter(
+    # Получаем список встречных ордеров
+    opposite_orders = db.query(OrderModel).filter(
         OrderModel.ticker == order.ticker,
         OrderModel.direction == opposite_direction,
-        OrderModel.status == OrderStatus.NEW
+        OrderModel.status == OrderStatus.NEW,
+        OrderModel.user_id != order.user_id  # Исключаем ордера того же пользователя
     )
     
-    if order.price:  # Для лимитных ордеров
-        if order.direction == Direction.BUY:
-            query = query.filter(OrderModel.price <= order.price)
-        else:
-            query = query.filter(OrderModel.price >= order.price)
-        
-        query = query.order_by(OrderModel.price)
-    else:  # Для рыночных ордеров
-        if order.direction == Direction.BUY:
-            query = query.order_by(OrderModel.price)
-        else:
-            query = query.order_by(OrderModel.price.desc())
+    # Для лимитных ордеров добавляем условие по цене
+    if order.direction == Direction.BUY:
+        if order.price is not None:  # Для лимитных ордеров
+            opposite_orders = opposite_orders.filter(OrderModel.price <= order.price)
+        opposite_orders = opposite_orders.order_by(OrderModel.price.asc())
+    else:
+        if order.price is not None:  # Для лимитных ордеров
+            opposite_orders = opposite_orders.filter(OrderModel.price >= order.price)
+        opposite_orders = opposite_orders.order_by(OrderModel.price.desc())
     
-    opposite_orders = query.all()
+    remaining_qty = order.qty - order.filled
     
-    # Исполняем ордер
-    remaining_qty = order.qty
     for opposite_order in opposite_orders:
         if remaining_qty == 0:
             break
@@ -231,41 +228,74 @@ async def try_execute_order(db: Session, order: OrderModel):
         execute_price = opposite_order.price or order.price
         
         if not execute_price:
+            logger.warning(f"[ORDER] Skipping execution due to undefined price: order_id={order.id}, opposite_order_id={opposite_order.id}")
             continue
-        
-        # Создаем транзакцию
-        transaction = Transaction(
-            ticker=order.ticker,
-            amount=execute_qty,
-            price=execute_price,
-            buyer_id=order.user_id if order.direction == Direction.BUY else opposite_order.user_id,
-            seller_id=opposite_order.user_id if order.direction == Direction.BUY else order.user_id
-        )
-        
-        # Обновляем балансы
+            
+        # Проверяем достаточность средств перед исполнением
         if order.direction == Direction.BUY:
-            await balance_service.withdraw(db, order.user_id, "RUB", execute_qty * execute_price)
-            await balance_service.deposit(db, order.user_id, order.ticker, execute_qty)
-            await balance_service.deposit(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
-            await balance_service.withdraw(db, opposite_order.user_id, order.ticker, execute_qty)
+            # Проверяем RUB у покупателя и токены у продавца
+            if not await balance_service.check_balance(db, order.user_id, "RUB", execute_qty * execute_price):
+                logger.error(f"[ORDER] Insufficient RUB balance for buyer: user_id={order.user_id}, required={execute_qty * execute_price}")
+                continue
+            if not await balance_service.check_balance(db, opposite_order.user_id, order.ticker, execute_qty):
+                logger.error(f"[ORDER] Insufficient {order.ticker} balance for seller: user_id={opposite_order.user_id}, required={execute_qty}")
+                continue
         else:
-            await balance_service.deposit(db, order.user_id, "RUB", execute_qty * execute_price)
-            await balance_service.withdraw(db, order.user_id, order.ticker, execute_qty)
-            await balance_service.withdraw(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
-            await balance_service.deposit(db, opposite_order.user_id, order.ticker, execute_qty)
+            # Проверяем токены у продавца и RUB у покупателя
+            if not await balance_service.check_balance(db, order.user_id, order.ticker, execute_qty):
+                logger.error(f"[ORDER] Insufficient {order.ticker} balance for seller: user_id={order.user_id}, required={execute_qty}")
+                continue
+            if not await balance_service.check_balance(db, opposite_order.user_id, "RUB", execute_qty * execute_price):
+                logger.error(f"[ORDER] Insufficient RUB balance for buyer: user_id={opposite_order.user_id}, required={execute_qty * execute_price}")
+                continue
         
-        # Обновляем ордера
-        order.filled += execute_qty
-        opposite_order.filled += execute_qty
-        
-        if opposite_order.filled == opposite_order.qty:
-            opposite_order.status = OrderStatus.EXECUTED
-        else:
-            opposite_order.status = OrderStatus.PARTIALLY_EXECUTED
-        
-        remaining_qty -= execute_qty
-        
-        db.add(transaction)
+        try:
+            # Создаем транзакцию
+            transaction = Transaction(
+                ticker=order.ticker,
+                amount=execute_qty,
+                price=execute_price,
+                buyer_id=order.user_id if order.direction == Direction.BUY else opposite_order.user_id,
+                seller_id=opposite_order.user_id if order.direction == Direction.BUY else order.user_id
+            )
+            
+            logger.info(f"[TRANSACTION] Creating new transaction: ticker={order.ticker}, amount={execute_qty}, price={execute_price}")
+            
+            # Обновляем балансы в правильном порядке
+            if order.direction == Direction.BUY:
+                # Сначала списываем средства
+                await balance_service.withdraw(db, order.user_id, "RUB", execute_qty * execute_price)
+                await balance_service.withdraw(db, opposite_order.user_id, order.ticker, execute_qty)
+                # Затем зачисляем
+                await balance_service.deposit(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
+                await balance_service.deposit(db, order.user_id, order.ticker, execute_qty)
+            else:
+                # Сначала списываем средства
+                await balance_service.withdraw(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
+                await balance_service.withdraw(db, order.user_id, order.ticker, execute_qty)
+                # Затем зачисляем
+                await balance_service.deposit(db, order.user_id, "RUB", execute_qty * execute_price)
+                await balance_service.deposit(db, opposite_order.user_id, order.ticker, execute_qty)
+            
+            # Обновляем ордера
+            order.filled += execute_qty
+            opposite_order.filled += execute_qty
+            
+            if opposite_order.filled == opposite_order.qty:
+                opposite_order.status = OrderStatus.EXECUTED
+            else:
+                opposite_order.status = OrderStatus.PARTIALLY_EXECUTED
+            
+            remaining_qty -= execute_qty
+            
+            db.add(transaction)
+            db.commit()
+            logger.info(f"[TRANSACTION] Successfully executed transaction: id={transaction.id}")
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[TRANSACTION] Failed to execute transaction: {str(e)}")
+            continue
     
     if remaining_qty == 0:
         order.status = OrderStatus.EXECUTED
@@ -274,6 +304,8 @@ async def try_execute_order(db: Session, order: OrderModel):
     
     try:
         db.commit()
+        logger.info(f"[ORDER] Successfully updated order status: id={order.id}, status={order.status}")
     except Exception as e:
         db.rollback()
+        logger.error(f"[ORDER] Failed to update order status: {str(e)}")
         raise HTTPException(status_code=400, detail="Ошибка при исполнении ордера") 
