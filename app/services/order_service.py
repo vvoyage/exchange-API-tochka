@@ -225,9 +225,8 @@ async def try_execute_order(db: Session, order: OrderModel):
             
         available_qty = opposite_order.qty - opposite_order.filled
         execute_qty = min(remaining_qty, available_qty)
+        execute_price = opposite_order.price or order.price
         
-        # Для рыночного ордера всегда берем цену из встречного ордера
-        execute_price = opposite_order.price
         if not execute_price:
             logger.warning(f"[ORDER] Skipping execution due to undefined price: order_id={order.id}, opposite_order_id={opposite_order.id}")
             continue
@@ -237,124 +236,76 @@ async def try_execute_order(db: Session, order: OrderModel):
             # Проверяем RUB у покупателя и токены у продавца
             if not await balance_service.check_balance(db, order.user_id, "RUB", execute_qty * execute_price):
                 logger.error(f"[ORDER] Insufficient RUB balance for buyer: user_id={order.user_id}, required={execute_qty * execute_price}")
-                if order.price is None:  # Для рыночного ордера
-                    order.status = OrderStatus.CANCELLED
-                    db.commit()
-                break
+                continue
             if not await balance_service.check_balance(db, opposite_order.user_id, order.ticker, execute_qty):
                 logger.error(f"[ORDER] Insufficient {order.ticker} balance for seller: user_id={opposite_order.user_id}, required={execute_qty}")
-                opposite_order.status = OrderStatus.CANCELLED
-                db.commit()
                 continue
-                
-            # Исполняем ордер
-            try:
-                # Списываем средства
-                await balance_service.withdraw(db, order.user_id, "RUB", execute_qty * execute_price)
-                await balance_service.withdraw(db, opposite_order.user_id, order.ticker, execute_qty)
-                
-                # Зачисляем средства
-                await balance_service.deposit(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
-                await balance_service.deposit(db, order.user_id, order.ticker, execute_qty)
-                
-                # Создаем транзакцию
-                transaction = Transaction(
-                    ticker=order.ticker,
-                    amount=execute_qty,
-                    price=execute_price,
-                    timestamp=datetime.utcnow()
-                )
-                db.add(transaction)
-                
-                # Обновляем статусы ордеров
-                order.filled += execute_qty
-                opposite_order.filled += execute_qty
-                
-                if order.filled == order.qty:
-                    order.status = OrderStatus.EXECUTED
-                elif order.filled > 0:
-                    order.status = OrderStatus.PARTIALLY_EXECUTED
-                    
-                if opposite_order.filled == opposite_order.qty:
-                    opposite_order.status = OrderStatus.EXECUTED
-                elif opposite_order.filled > 0:
-                    opposite_order.status = OrderStatus.PARTIALLY_EXECUTED
-                
-                db.commit()
-                logger.info(f"[ORDER] Successfully executed: qty={execute_qty}, price={execute_price}")
-                
-                remaining_qty -= execute_qty
-                
-            except Exception as e:
-                db.rollback()
-                logger.error(f"[ORDER] Failed to execute: {str(e)}")
-                if order.price is None:  # Для рыночного ордера отменяем при ошибке
-                    order.status = OrderStatus.CANCELLED
-                    db.commit()
-                break
-                
-        else:  # SELL
+        else:
             # Проверяем токены у продавца и RUB у покупателя
             if not await balance_service.check_balance(db, order.user_id, order.ticker, execute_qty):
                 logger.error(f"[ORDER] Insufficient {order.ticker} balance for seller: user_id={order.user_id}, required={execute_qty}")
-                if order.price is None:  # Для рыночного ордера
-                    order.status = OrderStatus.CANCELLED
-                    db.commit()
-                break
+                continue
             if not await balance_service.check_balance(db, opposite_order.user_id, "RUB", execute_qty * execute_price):
                 logger.error(f"[ORDER] Insufficient RUB balance for buyer: user_id={opposite_order.user_id}, required={execute_qty * execute_price}")
-                opposite_order.status = OrderStatus.CANCELLED
-                db.commit()
                 continue
-                
-            # Исполняем ордер
-            try:
-                # Списываем средства
-                await balance_service.withdraw(db, order.user_id, order.ticker, execute_qty)
+        
+        try:
+            # Создаем транзакцию
+            transaction = Transaction(
+                ticker=order.ticker,
+                amount=execute_qty,
+                price=execute_price,
+                buyer_id=order.user_id if order.direction == Direction.BUY else opposite_order.user_id,
+                seller_id=opposite_order.user_id if order.direction == Direction.BUY else order.user_id
+            )
+            
+            logger.info(f"[TRANSACTION] Creating new transaction: ticker={order.ticker}, amount={execute_qty}, price={execute_price}")
+            
+            # Обновляем балансы в правильном порядке
+            if order.direction == Direction.BUY:
+                # Сначала списываем средства
+                await balance_service.withdraw(db, order.user_id, "RUB", execute_qty * execute_price)
+                await balance_service.withdraw(db, opposite_order.user_id, order.ticker, execute_qty)
+                # Затем зачисляем
+                await balance_service.deposit(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
+                await balance_service.deposit(db, order.user_id, order.ticker, execute_qty)
+            else:
+                # Сначала списываем средства
                 await balance_service.withdraw(db, opposite_order.user_id, "RUB", execute_qty * execute_price)
-                
-                # Зачисляем средства
+                await balance_service.withdraw(db, order.user_id, order.ticker, execute_qty)
+                # Затем зачисляем
                 await balance_service.deposit(db, order.user_id, "RUB", execute_qty * execute_price)
                 await balance_service.deposit(db, opposite_order.user_id, order.ticker, execute_qty)
-                
-                # Создаем транзакцию
-                transaction = Transaction(
-                    ticker=order.ticker,
-                    amount=execute_qty,
-                    price=execute_price,
-                    timestamp=datetime.utcnow()
-                )
-                db.add(transaction)
-                
-                # Обновляем статусы ордеров
-                order.filled += execute_qty
-                opposite_order.filled += execute_qty
-                
-                if order.filled == order.qty:
-                    order.status = OrderStatus.EXECUTED
-                elif order.filled > 0:
-                    order.status = OrderStatus.PARTIALLY_EXECUTED
-                    
-                if opposite_order.filled == opposite_order.qty:
-                    opposite_order.status = OrderStatus.EXECUTED
-                elif opposite_order.filled > 0:
-                    opposite_order.status = OrderStatus.PARTIALLY_EXECUTED
-                
-                db.commit()
-                logger.info(f"[ORDER] Successfully executed: qty={execute_qty}, price={execute_price}")
-                
-                remaining_qty -= execute_qty
-                
-            except Exception as e:
-                db.rollback()
-                logger.error(f"[ORDER] Failed to execute: {str(e)}")
-                if order.price is None:  # Для рыночного ордера отменяем при ошибке
-                    order.status = OrderStatus.CANCELLED
-                    db.commit()
-                break
+            
+            # Обновляем ордера
+            order.filled += execute_qty
+            opposite_order.filled += execute_qty
+            
+            if opposite_order.filled == opposite_order.qty:
+                opposite_order.status = OrderStatus.EXECUTED
+            else:
+                opposite_order.status = OrderStatus.PARTIALLY_EXECUTED
+            
+            remaining_qty -= execute_qty
+            
+            db.add(transaction)
+            db.commit()
+            logger.info(f"[TRANSACTION] Successfully executed transaction: id={transaction.id}")
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[TRANSACTION] Failed to execute transaction: {str(e)}")
+            continue
     
-    # Если это рыночный ордер и он не был исполнен полностью, отменяем его
-    if order.price is None and order.filled < order.qty:
-        order.status = OrderStatus.CANCELLED
+    if remaining_qty == 0:
+        order.status = OrderStatus.EXECUTED
+    elif order.filled > 0:
+        order.status = OrderStatus.PARTIALLY_EXECUTED
+    
+    try:
         db.commit()
-        logger.info(f"[ORDER] Cancelled market order due to incomplete execution: filled={order.filled}, qty={order.qty}") 
+        logger.info(f"[ORDER] Successfully updated order status: id={order.id}, status={order.status}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[ORDER] Failed to update order status: {str(e)}")
+        raise HTTPException(status_code=400, detail="Ошибка при исполнении ордера") 
