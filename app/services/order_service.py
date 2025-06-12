@@ -11,38 +11,8 @@ from app.schemas.order import (
 )
 from app.schemas.instrument import L2OrderBook, Level
 from app.services import balance_service, instrument_service
+from app.services.order import convert_order_to_schema
 import logging
-
-def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]:
-    """Конвертация модели Order в схему согласно OpenAPI"""
-    if order.price is not None:  # Лимитный ордер
-        body = LimitOrderBody(
-            direction=order.direction,
-            ticker=order.ticker,
-            qty=order.qty,
-            price=order.price
-        )
-        return LimitOrder(
-            id=order.id,
-            status=order.status,
-            user_id=order.user_id,
-            timestamp=order.timestamp,
-            body=body,
-            filled=order.filled or 0  # Убедимся, что filled всегда имеет значение
-        )
-    else:  # Рыночный ордер
-        body = MarketOrderBody(
-            direction=order.direction,
-            ticker=order.ticker,
-            qty=order.qty
-        )
-        return MarketOrder(
-            id=order.id,
-            status=order.status,
-            user_id=order.user_id,
-            timestamp=order.timestamp,
-            body=body
-        )
 
 async def get_orders(db: Session, user_id: Optional[UUID] = None) -> List[Union[LimitOrder, MarketOrder]]:
     """Получение списка ордеров"""
