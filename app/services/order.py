@@ -1,13 +1,8 @@
 from datetime import datetime, timezone
-from uuid import UUID
-from typing import Optional, Union, List
+from typing import Union
 import logging
 
-from sqlalchemy import select, and_, or_
-from sqlalchemy.orm import Session
-
 from app.models.order import Order as OrderModel
-from app.models.user import User
 from app.schemas.order import (
     OrderStatus,
     Direction,
@@ -15,12 +10,6 @@ from app.schemas.order import (
     MarketOrder,
     LimitOrderBody,
     MarketOrderBody,
-)
-from app.services.balance import BalanceService
-from app.services.exceptions import (
-    OrderNotFoundError,
-    InsufficientFundsError,
-    OrderCancellationError,
 )
 
 def convert_order_to_schema(order: OrderModel) -> Union[LimitOrder, MarketOrder]:
